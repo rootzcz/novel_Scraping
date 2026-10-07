@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Novel Lucky - Chapter Text Extractor + Ad Blocker
 // @namespace    local.novel-lucky.extractor
-// @version      1.2
-// @description  คัดลอก/ดาวน์โหลดตอน และดึงทุกตอนจาก novel-lucky.com เป็น .txt หรือ .epub ถอดรหัสฟอนต์สลับตัวอักษร (LuckyNovelGlyphShield) อัตโนมัติ พร้อมบล็อกแบนเนอร์โฆษณาทุกจุด
+// @version      1.3
+// @description  คัดลอก/ดาวน์โหลดตอน และดึงทุกตอนจาก novel-lucky.com เป็น .txt หรือ .epub ถอดรหัสฟอนต์สลับตัวอักษร (LuckyNovelGlyphShield) ลบตัวอักษรมองไม่เห็นทุกชนิด (ZWSP/ZWNJ ฯลฯ) พร้อมบล็อกแบนเนอร์โฆษณาทุกจุด
 // @match        https://novel-lucky.com/*
 // @noframes
 // @grant        GM_setClipboard
@@ -40,6 +40,26 @@
     cssInjected = true;
   }
 
+  // ลบตัวอักษรมองไม่เห็นที่เว็บแทรกในเนื้อหา (ZWSP/ZWNJ ฯลฯ) ออกจากหน้าจริง
+  // เพื่อให้ copy ตรงจากหน้าเว็บโดยไม่ผ่านแผงปุ่มก็ได้ข้อความสะอาด
+  const INVISIBLE_SRC = '[\\u200b\\u200c\\u200d\\u2060\\ufeff\\u180e\\u00ad]';
+  const INVISIBLE_G = new RegExp(INVISIBLE_SRC, 'g');
+  const INVISIBLE_ONE = new RegExp(INVISIBLE_SRC);
+
+  function cleanInvisibleText() {
+    const roots = document.querySelectorAll('.reading-content, #chapter-heading');
+    for (const root of roots) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      for (const n of nodes) {
+        if (INVISIBLE_ONE.test(n.nodeValue)) {
+          n.nodeValue = n.nodeValue.replace(INVISIBLE_G, '');
+        }
+      }
+    }
+  }
+
   // ลบก้อนโฆษณาออกจาก DOM จริง (แค่ display:none ยังทิ้งช่องว่างและยังคลิกโดน)
   function sweepAds() {
     let removed = 0;
@@ -52,6 +72,7 @@
       if (widget && !widget.querySelector('a') && !widget.textContent.trim()) widget.remove();
       removed++;
     });
+    cleanInvisibleText();
     return removed;
   }
 
@@ -254,8 +275,9 @@
   async function extract(doc, rawHtml) {
     const box = doc.querySelector('.reading-content .text-left') || doc.querySelector('.reading-content');
     if (!box) return null;
-    // ลบตัวอักษรแฝง (ZWSP ฯลฯ) กัน Notepad++ โชว์กล่อง
-    const clean = s => (s || '').replace(/\u00a0/g, ' ').replace(/[\u200b\u2060\ufeff]/g, '').trim();
+    // ลบตัวอักษรมองไม่เห็นที่เว็บแทรก (ZWSP/ZWNJ/ZWJ/WJ/BOM/soft hyphen)
+    // กัน Notepad++ โชว์เป็นกล่องอ่านไม่ออก
+    const clean = s => (s || '').replace(/\u00a0/g, ' ').replace(/[\u200b\u200c\u200d\u2060\ufeff\u180e\u00ad]/g, '').trim();
 
     let map = new Map(), noFont = false, fontErr = null;
     try { map = await getSwapMap(doc, rawHtml); }
